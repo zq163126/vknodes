@@ -34,5 +34,7 @@ jobs:
           TARGET_URL: ${{ secrets.TARGET_URL }}
           ACCOUNT_USER: ${{ secrets.ACCOUNT_USER }}
           ACCOUNT_PASS: ${{ secrets.ACCOUNT_PASS }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
         run: |
           python login.py
