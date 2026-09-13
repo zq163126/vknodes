@@ -1,0 +1,38 @@
+name: Automated Session Login
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # 每天定时运行一次，可按需调整
+  workflow_dispatch:   # 允许手动触发
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          playwright install chromium
+          
+      - name: 启用 WARP 网络
+        uses: fscarmen/warp-on-actions@v1.3
+        with:
+          stack: dual
+          mode: client
+
+      - name: Run Login Script
+        env:
+          TARGET_URL: ${{ secrets.TARGET_URL }}
+          ACCOUNT_USER: ${{ secrets.ACCOUNT_USER }}
+          ACCOUNT_PASS: ${{ secrets.ACCOUNT_PASS }}
+        run: |
+          python login.py
