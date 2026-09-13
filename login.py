@@ -1,5 +1,6 @@
 import asyncio
 import os
+import random
 import requests
 from playwright.async_api import async_playwright
 
@@ -19,7 +20,6 @@ def send_telegram_notification(caption_text, image_path=None):
 
     try:
         if image_path and os.path.exists(image_path):
-            # 发送带图消息
             url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
             with open(image_path, "rb") as photo:
                 files = {"photo": photo}
@@ -31,7 +31,6 @@ def send_telegram_notification(caption_text, image_path=None):
             else:
                 print(f"Telegram 发送失败: {result}")
         else:
-            # 仅发送纯文本消息
             url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
             data = {"chat_id": chat_id, "text": formatted_caption}
             response = requests.post(url, data=data, timeout=30)
@@ -44,39 +43,44 @@ def send_telegram_notification(caption_text, image_path=None):
 
 async def simulate_mouse_move_and_click(page, selector):
     """
-    模拟真实的鼠标移动到目标元素上，并根据页面特殊的 CSS 变量 --core-x 和 --core-y 
-    触发对应的坐标悬停和点击，以完美契合前端防机器人坐标校验机制。
+    模拟真实的鼠标移动到目标元素上。
+    在按钮内部的合理范围内（30% - 70% 区域）随机生成点击坐标，
+    并配合随机步长移动，以绕过固定坐标检测。
     """
     element = await page.wait_for_selector(selector)
     box = await element.bounding_box()
     if not box:
         raise Exception(f"无法获取元素 {selector} 的边界框坐标。")
     
-    target_x = box['x'] + box['width'] * 0.5
-    target_y = box['y'] + box['height'] * 0.5
+    # 在按钮内部的安全范围内（宽度和高度的 0.3 到 0.7 之间）随机生成坐标
+    target_x = box['x'] + box['width'] * random.uniform(0.3, 0.7)
+    target_y = box['y'] + box['height'] * random.uniform(0.3, 0.7)
 
-    print(f"正在模拟鼠标平滑移动至目标按钮: ({target_x}, {target_y})")
+    print(f"正在模拟鼠标平滑移动至目标按钮（随机坐标）: ({target_x:.2f}, {target_y:.2f})")
     
     card_element = await page.wait_for_selector('article.auth-card')
     card_box = await card_element.bounding_box()
     
-    start_x = card_box['x'] + 50
-    start_y = card_box['y'] + 50
+    start_x = card_box['x'] + random.uniform(20, 80)
+    start_y = card_box['y'] + random.uniform(20, 80)
     await page.mouse.move(start_x, start_y)
-    await asyncio.sleep(0.3)
+    await asyncio.sleep(random.uniform(0.2, 0.4))
 
-    steps = 15
+    # 随机平滑步数，让轨迹更自然
+    steps = random.randint(12, 20)
     for i in range(steps + 1):
-        curr_x = start_x + (target_x - start_x) * (i / steps)
-        curr_y = start_y + (target_y - start_y) * (i / steps)
+        curr_x = start_x + (target_x - start_x) * (i / steps) + random.uniform(-1, 1)
+        curr_y = start_y + (target_y - start_y) * (i / steps) + random.uniform(-1, 1)
         await page.mouse.move(curr_x, curr_y)
-        await asyncio.sleep(0.02)
+        await asyncio.sleep(random.uniform(0.015, 0.035))
 
+    # 最终停留在计算出的随机点上
     await page.mouse.move(target_x, target_y)
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(random.uniform(0.3, 0.6))
 
+    # 执行点击
     await page.mouse.click(target_x, target_y)
-    print("已成功在目标坐标执行点击操作。")
+    print("已成功在随机坐标执行点击操作。")
 
 async def main():
     target_url = os.environ.get("TARGET_URL")
@@ -112,20 +116,20 @@ async def main():
             print("正在填写邮箱...")
             email_input = await page.wait_for_selector('input[name="email"]')
             await email_input.fill(account_user)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(random.uniform(0.4, 0.8))
 
             print("正在填写密码...")
             password_input = await page.wait_for_selector('input[name="password"]')
             await password_input.fill(account_pass)
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(random.uniform(0.4, 0.8))
 
             print("正在勾选法律条款确认框...")
             checkbox = await page.wait_for_selector('input[name="accept_legal"]')
             if not await checkbox.is_checked():
                 await checkbox.click()
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(random.uniform(0.4, 0.8))
 
-            print("开始执行鼠标模拟与点击提交...")
+            print("开始执行随机鼠标轨迹与点击提交...")
             await simulate_mouse_move_and_click(
                 page, 
                 'button.button.button-primary.vf-signin-button.auth-submit'
@@ -145,7 +149,6 @@ async def main():
             print(login_status_msg)
         
         finally:
-            # 无论成功失败，均对当前页面进行截图保存
             await page.screenshot(path=screenshot_path, full_page=True)
             await browser.close()
 
