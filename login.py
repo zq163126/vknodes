@@ -81,40 +81,42 @@ async def simulate_mouse_move_and_click(page, selector):
 async def simulate_renew_server_click(page):
     """
     模拟鼠标从容器区域划入、在 Renew Server 按钮区域动态寻优/移动并随机点击，
-    以契合 --core-x / --core-y 联动检测。
+    配合滚动与真实鼠标移动事件，联动页面 --core-x/--core-y 变化。
     """
     selector = 'a[href*="/renewal-costs?server="]'
-    element = await page.wait_for_selector(selector, timeout=10000)
+    element = await page.wait_for_selector(selector, state="visible", timeout=10000)
+    await element.scroll_into_view_if_needed()
     box = await element.bounding_box()
     if not box:
         raise Exception("无法获取 Renew Server 按钮的边界框坐标。")
+
+    # 尝试将所属面板卡片也滚动并获取坐标
+    card_element = await page.query_selector('section.v31-server-overview')
+    c_box = None
+    if card_element:
+        await card_element.scroll_into_view_if_needed()
+        c_box = await card_element.bounding_box()
 
     target_x = box['x'] + box['width'] * random.uniform(0.3, 0.7)
     target_y = box['y'] + box['height'] * random.uniform(0.3, 0.7)
     print(f"正在模拟鼠标移动至 Renew Server 按钮（随机坐标）: ({target_x:.2f}, {target_y:.2f})")
 
-    # 寻找到外层的面板卡片区或视口偏移起点作为划入模拟
-    card_element = await page.query_selector('section.v31-server-overview')
-    if card_element:
-        c_box = await card_element.bounding_box()
-        if c_box:
-            start_x = c_box['x'] + random.uniform(30, 100)
-            start_y = c_box['y'] + random.uniform(30, 100)
-        else:
-            start_x, start_y = target_x - 120, target_y - 60
+    if c_box:
+        start_x = c_box['x'] + random.uniform(20, c_box['width'] * 0.4)
+        start_y = c_box['y'] + random.uniform(20, c_box['height'] * 0.4)
     else:
-        start_x, start_y = target_x - 120, target_y - 60
+        start_x, start_y = target_x - 100, target_y - 50
 
     await page.mouse.move(start_x, start_y)
     await asyncio.sleep(random.uniform(0.2, 0.4))
 
-    # 平滑过渡移动到按钮
-    steps = random.randint(14, 22)
+    # 平滑过渡移动到按钮（触发路径上的 mousemove 联动更新）
+    steps = random.randint(15, 25)
     for i in range(steps + 1):
         curr_x = start_x + (target_x - start_x) * (i / steps) + random.uniform(-1.5, 1.5)
         curr_y = start_y + (target_y - start_y) * (i / steps) + random.uniform(-1.5, 1.5)
         await page.mouse.move(curr_x, curr_y)
-        await asyncio.sleep(random.uniform(0.015, 0.035))
+        await asyncio.sleep(random.uniform(0.015, 0.03))
 
     await page.mouse.move(target_x, target_y)
     await asyncio.sleep(random.uniform(0.3, 0.6))
@@ -192,16 +194,25 @@ async def main():
             await page.screenshot(path=login_screenshot_path, full_page=True)
             send_telegram_notification(login_status_msg, login_screenshot_path)
 
-            # === 增加 Renew Server 功能 ===
+            # === 登录成功后延时 4 秒再做下一步 ===
+            print("登录成功，等待 4 秒进行后续面板加载...")
+            await asyncio.sleep(4)
+
+            # === 查找并点击 Renew Server 按钮 ===
             try:
                 print("尝试查找并点击 Renew Server 按钮...")
                 await simulate_renew_server_click(page)
-                await asyncio.sleep(3) # 等待点击响应
+                
+                # 点击完 Renew Server 按钮后延时 4 秒再截图发送 telegram
+                print("已点击 Renew Server 按钮，等待 4 秒后截图...")
+                await asyncio.sleep(4)
+                
                 renew_status_msg = "成功找到并点击了 Renew Server 按钮。"
                 print(renew_status_msg)
             except Exception as e:
                 renew_status_msg = f"查找或点击 Renew Server 失败: {str(e)}"
                 print(renew_status_msg)
+                await asyncio.sleep(4) # 异常也保证等 4 秒再截图
 
             # Renew 操作后截图并发送
             await page.screenshot(path=renew_screenshot_path, full_page=True)
